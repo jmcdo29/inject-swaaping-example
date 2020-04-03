@@ -1,75 +1,97 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo_text.svg" width="320" alt="Nest Logo" /></a>
-</p>
+# Inject Swapping Example
 
-[travis-image]: https://api.travis-ci.org/nestjs/nest.svg?branch=master
-[travis-url]: https://travis-ci.org/nestjs/nest
-[linux-image]: https://img.shields.io/travis/nestjs/nest/master.svg?label=linux
-[linux-url]: https://travis-ci.org/nestjs/nest
-  
-  <p align="center">A progressive <a href="http://nodejs.org" target="blank">Node.js</a> framework for building efficient and scalable server-side applications, heavily inspired by <a href="https://angular.io" target="blank">Angular</a>.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore"><img src="https://img.shields.io/npm/dm/@nestjs/core.svg" alt="NPM Downloads" /></a>
-<a href="https://travis-ci.org/nestjs/nest"><img src="https://api.travis-ci.org/nestjs/nest.svg?branch=master" alt="Travis" /></a>
-<a href="https://travis-ci.org/nestjs/nest"><img src="https://img.shields.io/travis/nestjs/nest/master.svg?label=linux" alt="Linux" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#5" alt="Coverage" /></a>
-<a href="https://gitter.im/nestjs/nestjs?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=body_badge"><img src="https://badges.gitter.im/nestjs/nestjs.svg" alt="Gitter" /></a>
-<a href="https://opencollective.com/nest#backer"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec"><img src="https://img.shields.io/badge/Donate-PayPal-dc3d53.svg"/></a>
-  <a href="https://twitter.com/nestframework"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## The Setup
 
-## Description
+I tried to create some sort of set up that would make enough sense to show how all of this swapping is working, so I ended up using a ton of metasyntactic variables (more than I knew existed), at a base level just to show what's going on. 
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+### Main Class with the Swapping Happening
 
-## Installation
+[BazService](./src/baz/baz.service.ts)
 
-```bash
-$ npm install
+```typescript
+@Injectable()
+export class BazService {
+  constructor(
+    @Inject('tokenA') private readonly serviceA: CustomService,
+    @Inject('tokenB') private readonly serviceB: CustomService,
+  ) {}
+
+  getA() {
+    return BazService.name + 'getA' + this.serviceA.get();
+  }
+
+  getB() {
+    return BazService.name + 'getB' + this.serviceB.get();
+  }
+}
 ```
 
-## Running the app
+A super lightweight class that really just returns a string say "we made it into baz and baz called its friend A or B". "tokenA" and "tokenB" are the injection tokens that get used for overwriting which CustomService the BazService instance gets
 
-```bash
-# development
-$ npm run start
+[CustomService](./src/interfaces/service.interface.ts)
 
-# watch mode
-$ npm run start:dev
+```typescript
+interface CustomServiceInterface {
+  get: () => string;
+}
 
-# production mode
-$ npm run start:prod
+export class CustomService implements CustomServiceInterface {
+  get() {
+    return 'CustomService get method';
+  }
+}
 ```
 
-## Test
+This is just to have an interface and a class that implements that interface. As Kamil said, this could also just be an abstract class.
 
-```bash
-# unit tests
-$ npm run test
+Foo and Bar services have a dependency on `BazService` and nothing else, so let's take a look at the modules and their metadata:
 
-# e2e tests
-$ npm run test:e2e
+[FooModule](src/foo/foo.module.ts)
 
-# test coverage
-$ npm run test:cov
+```typescript
+@Module({
+  providers: [
+    FooService,
+    BazService,
+    {
+      provide: 'tokenA',
+      useClass: QuxService,
+    },
+    {
+      provide: 'tokenB',
+      useClass: QuzService,
+    },
+  ],
+  controllers: [FooController],
+})
+export class FooModule {}
 ```
 
-## Support
+Using Custom providers, we can see that "tokenA" and "tokenB" are being provided at [QuxService](src/foo/qux.service.ts) and [QuzService](src/foo/quz.service.ts). We also notice that we have `BazService` in the providers array.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+[BarModule](src/bar/bar.module.ts)
 
-## Stay in touch
+```typescript
+@Module({
+  providers: [
+    BarService,
+    BazService,
+    {
+      provide: 'tokenA',
+      useClass: CorgeService,
+    },
+    {
+      provide: 'tokenB',
+      useClass: GraultService,
+    },
+  ],
+  controllers: [BarController],
+})
+export class BarModule {}
+```
 
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+Now in `BarModule` we see a similar set up with "tokenA" provided as [CorgeService](src/bar/corge.service.ts) and "tokenB" as [GraultService](src/bar/grault.service.ts). Notice here we **also** add `BazService` as a provider again. This is because through modules, providers are singletons, but if a provider is registered in two different modules, each provider is it's own instance, allowing us to give different values to be injected.
 
-## License
+Now if we were to start the server up you'd see your normal instantiation logs, and then in another terminal you can use `curl` to make requests or Postman, whichever you really prefer. And you'll see outputs that show each `BazService` calls different A's and B's, jsut as we expect with how they have been bound. 
 
-  Nest is [MIT licensed](LICENSE).
+If you wanted, these `BazService`s could have been instantiated in their own modules, and then have the module imported into the foo and bar module, but this is a good starting place for now.
